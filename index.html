@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LOXS CLIPPER // Free Video Cutter Tool</title>
+<meta name="description" content="Free online video cutter tool. Trim and clip your videos instantly in browser — no upload, no server, 100% private.">
+
+<!-- FFmpeg.wasm -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ffmpeg/0.12.6/ffmpeg.min.js" crossorigin="anonymous"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+:root {
+  --bg:    #080b0f;
+  --bg2:   #0d1117;
+  --bg3:   #111820;
+  --dim:   #1c2733;
+  --green: #00ff88;
+  --cyan:  #00e5ff;
+  --text:  #b0c8d8;
+  --muted: #3a5060;
+  --err:   #ff4466;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Share Tech Mono', monospace;
+  min-height: 100vh;
+  padding: 12px;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 3px,
+    rgba(0,255,136,0.012) 3px, rgba(0,255,136,0.012) 4px
+  );
+  pointer-events: none;
+  z-index: 999;
+}
+
+/* HEADER */
+.header {
+  text-align: center;
+  padding: 20px 0 18px;
+  border-bottom: 1px solid var(--dim);
+  margin-bottom: 18px;
+}
+
+.logo {
+  font-family: 'Orbitron', monospace;
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--green);
+  text-shadow: 0 0 24px rgba(0,255,136,0.45);
+  letter-spacing: 5px;
+}
+
+.tagline {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 6px;
+  letter-spacing: 2px;
+}
+
+.badge-row {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-size: 9px;
+  letter-spacing: 1px;
+  padding: 3px 10px;
+  border-radius: 2px;
+  border: 1px solid;
+}
+
+.badge-green { border-color: var(--green); color: var(--green); }
+.badge-cyan  { border-color: var(--cyan);  color: var(--cyan);  }
+.badge-muted { border-color: var(--muted); color: var(--muted); }
+
+/* INIT LOADER */
+#initOverlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.init-logo {
+  font-family: 'Orbitron', monospace;
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--green);
+  letter-spacing: 4px;
+  margin-bottom: 24px;
+  text-shadow: 0 0 20px rgba(0,255,136,0.5);
+}
+
+.init-bar-wrap {
+  width: 240px;
+  height: 3px;
+  background: var(--dim);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.init-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), var(--cyan));
+  animation: initLoad 2.5s ease-out forwards;
+  box-shadow: 0 0 8px rgba(0,255,136,0.5);
+}
+
+@keyframes initLoad {
+  0%   { width: 0%; }
+  60%  { width: 70%; }
+  100% { width: 100%; }
+}
+
+.init-text {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink { 50% { opacity: 0; } }
+
+/* CARD */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--dim);
+  border-radius: 4px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.card-title {
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--cyan);
+  margin-bottom: 14px;
+  text-transform: uppercase;
+}
+
+/* DROP ZONE */
+.drop-zone {
+  border: 1px dashed var(--muted);
+  border-radius: 4px;
+  padding: 28px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg);
+  position: relative;
+}
+
+.drop-zone:hover, .drop-zone.over {
+  border-color: var(--green);
+  background: rgba(0,255,136,0.025);
+}
+
+.drop-icon { font-size: 28px; margin-bottom: 10px; }
+.drop-text { font-size: 13px; margin-bottom: 5px; }
+.drop-sub  { font-size: 10px; color: var(--muted); }
+
+#fileInput { display: none; }
+
+/* VIDEO PREVIEW */
+#previewWrap {
+  margin-top: 14px;
+  display: none;
+}
+
+video {
+  width: 100%;
+  border-radius: 3px;
+  border: 1px solid var(--dim);
+  background: #000;
+  max-height: 200px;
+}
+
+/* META GRID */
+.meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.meta-item {
+  background: var(--bg3);
+  border: 1px solid var(--dim);
+  padding: 8px 10px;
+  border-radius: 3px;
+}
+
+.meta-label { font-size: 9px; color: var(--muted); letter-spacing: 2px; }
+.meta-value { font-size: 13px; color: var(--green); margin-top: 3px; }
+
+/* TIME INPUTS */
+.time-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.input-group label {
+  display: block;
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.input-group input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--dim);
+  color: var(--green);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 18px;
+  padding: 10px;
+  border-radius: 3px;
+  outline: none;
+  text-align: center;
+  letter-spacing: 3px;
+  transition: border-color 0.2s;
+}
+
+.input-group input:focus { border-color: var(--cyan); }
+
+/* RANGE SLIDER */
+.range-wrap {
+  margin-bottom: 14px;
+}
+
+.range-label {
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.dual-range {
+  position: relative;
+  height: 24px;
+}
+
+.dual-range input[type=range] {
+  position: absolute;
+  width: 100%;
+  height: 4px;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  top: 10px;
+}
+
+.dual-range input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--green);
+  border: 2px solid var(--bg);
+  pointer-events: all;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(0,255,136,0.5);
+}
+
+.range-track {
+  position: absolute;
+  top: 12px;
+  left: 0; right: 0;
+  height: 4px;
+  background: var(--dim);
+  border-radius: 2px;
+}
+
+.range-fill {
+  position: absolute;
+  height: 4px;
+  background: linear-gradient(90deg, var(--green), var(--cyan));
+  border-radius: 2px;
+  top: 12px;
+}
+
+/* PROGRESS */
+.progress-wrap {
+  background: var(--bg);
+  border: 1px solid var(--dim);
+  border-radius: 3px;
+  height: 5px;
+  margin: 12px 0 8px;
+  overflow: hidden;
+  display: none;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), var(--cyan));
+  width: 0%;
+  transition: width 0.3s;
+  box-shadow: 0 0 8px rgba(0,255,136,0.4);
+}
+
+.progress-bar.indeterminate {
+  animation: slide 1.4s linear infinite;
+  width: 35%;
+}
+
+@keyframes slide {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(400%); }
+}
+
+/* BUTTONS */
+.btn {
+  width: 100%;
+  padding: 13px;
+  font-family: 'Orbitron', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+
+.btn-primary {
+  background: var(--green);
+  color: #000;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--cyan);
+  box-shadow: 0 0 18px rgba(0,229,255,0.3);
+}
+
+.btn-primary:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.btn-dl {
+  background: transparent;
+  color: var(--cyan);
+  border: 1px solid var(--cyan);
+  margin-top: 10px;
+  display: none;
+}
+
+.btn-dl:hover { background: rgba(0,229,255,0.07); }
+
+/* STATUS */
+.status {
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 9px 12px;
+  border-radius: 3px;
+  margin-top: 8px;
+  display: none;
+  line-height: 1.5;
+}
+
+.status.show { display: block; }
+.status.info    { color: var(--cyan);  background: rgba(0,229,255,0.05); border: 1px solid rgba(0,229,255,0.15); }
+.status.success { color: var(--green); background: rgba(0,255,136,0.05); border: 1px solid rgba(0,255,136,0.15); }
+.status.error   { color: var(--err);   background: rgba(255,68,102,0.05); border: 1px solid rgba(255,68,102,0.15); }
+
+/* HOW IT WORKS */
+.steps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.step {
+  background: var(--bg3);
+  border: 1px solid var(--dim);
+  border-radius: 3px;
+  padding: 12px;
+}
+
+.step-num {
+  font-family: 'Orbitron', monospace;
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--green);
+  opacity: 0.4;
+  line-height: 1;
+}
+
+.step-title {
+  font-size: 11px;
+  color: var(--text);
+  margin-top: 6px;
+}
+
+.step-desc {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+/* AFFILIATE */
+.affiliate {
+  background: linear-gradient(135deg, #080f1a, #0c1825);
+  border: 1px solid rgba(0,229,255,0.2);
+  border-radius: 4px;
+  padding: 18px;
+  margin-bottom: 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.affiliate::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+}
+
+.aff-eyebrow {
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.aff-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--cyan);
+  margin-bottom: 5px;
+}
+
+.aff-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 14px;
+  line-height: 1.6;
+}
+
+.aff-feats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.aff-feat {
+  font-size: 10px;
+  color: var(--text);
+  padding: 5px 8px;
+  background: rgba(0,229,255,0.04);
+  border-left: 2px solid var(--cyan);
+  border-radius: 2px;
+}
+
+.aff-feat::before { content: '▸ '; color: var(--cyan); }
+
+.btn-aff {
+  display: block;
+  width: 100%;
+  padding: 13px;
+  background: linear-gradient(90deg, #004499, #0066cc);
+  color: #fff;
+  font-family: 'Orbitron', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-align: center;
+  text-decoration: none;
+  border-radius: 3px;
+  transition: all 0.2s;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-aff:hover {
+  background: linear-gradient(90deg, #0055bb, #0088ff);
+  box-shadow: 0 0 14px rgba(0,136,255,0.3);
+}
+
+.aff-note {
+  font-size: 9px;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 8px;
+  opacity: 0.5;
+}
+
+/* FOOTER */
+.footer {
+  text-align: center;
+  padding: 18px 0;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  border-top: 1px solid var(--dim);
+}
+
+.footer span { color: var(--green); }
+</style>
+</head>
+<body>
+
+<!-- INIT OVERLAY -->
+<div id="initOverlay">
+  <div class="init-logo">⬡ LOXS CLIPPER</div>
+  <div class="init-bar-wrap"><div class="init-bar"></div></div>
+  <div class="init-text">LOADING FFMPEG ENGINE...</div>
+</div>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo">⬡ LOXS CLIPPER</div>
+  <div class="tagline">// FREE VIDEO CUTTER // IN-BROWSER // NO UPLOAD //</div>
+  <div class="badge-row">
+    <span class="badge badge-green">100% FREE</span>
+    <span class="badge badge-cyan">NO SERVER</span>
+    <span class="badge badge-muted">PRIVATE</span>
+    <span class="badge badge-muted">FFMPEG WASM</span>
+  </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<div class="card">
+  <div class="card-title">▸ How It Works</div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-title">Select Video</div>
+      <div class="step-desc">Pick any MP4, MKV, MOV or WebM from your device</div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-title">Set Time Range</div>
+      <div class="step-desc">Enter start & end time or drag the slider</div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-title">Cut & Download</div>
+      <div class="step-desc">FFmpeg runs in your browser — no upload needed</div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-title">100% Private</div>
+      <div class="step-desc">Your video never leaves your device</div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 1: SELECT VIDEO -->
+<div class="card">
+  <div class="card-title">▸ 01 // Select Video</div>
+
+  <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <div class="drop-icon">⬡</div>
+    <div class="drop-text">Tap to select video</div>
+    <div class="drop-sub">MP4 · MKV · MOV · WebM · AVI · max 2GB</div>
+  </div>
+  <input type="file" id="fileInput" accept="video/*">
+
+  <div id="previewWrap">
+    <video id="videoPreview" controls playsinline></video>
+    <div class="meta-grid">
+      <div class="meta-item"><div class="meta-label">Duration</div><div class="meta-value" id="metaDur">--</div></div>
+      <div class="meta-item"><div class="meta-label">Resolution</div><div class="meta-value" id="metaRes">--</div></div>
+      <div class="meta-item"><div class="meta-label">File Size</div><div class="meta-value" id="metaSize">--</div></div>
+      <div class="meta-item"><div class="meta-label">Type</div><div class="meta-value" id="metaType">--</div></div>
+    </div>
+  </div>
+
+  <div class="status" id="fileStatus"></div>
+</div>
+
+<!-- STEP 2: CLIP RANGE -->
+<div class="card">
+  <div class="card-title">▸ 02 // Set Clip Range</div>
+
+  <!-- Dual range slider -->
+  <div class="range-wrap" id="rangeWrap" style="display:none">
+    <div class="range-label">
+      <span>RANGE</span>
+      <span id="rangeDisplay">00:00:00 → 00:00:00</span>
+    </div>
+    <div class="dual-range">
+      <div class="range-track"></div>
+      <div class="range-fill" id="rangeFill"></div>
+      <input type="range" id="sliderStart" min="0" max="100" value="0" step="0.1">
+      <input type="range" id="sliderEnd"   min="0" max="100" value="100" step="0.1">
+    </div>
+  </div>
+
+  <div class="time-row">
+    <div class="input-group">
+      <label>Start Time</label>
+      <input type="text" id="startTime" placeholder="00:00:00" maxlength="8">
+    </div>
+    <div class="input-group">
+      <label>End Time</label>
+      <input type="text" id="endTime" placeholder="00:00:10" maxlength="8">
+    </div>
+  </div>
+
+  <button class="btn btn-primary" id="clipBtn" onclick="startClip()" disabled>
+    ⬡ EXECUTE CLIP
+  </button>
+
+  <div class="progress-wrap" id="clipProgress">
+    <div class="progress-bar indeterminate"></div>
+  </div>
+
+  <div class="status" id="clipStatus"></div>
+
+  <button class="btn btn-dl" id="downloadBtn" onclick="downloadClip()">
+    ↓ DOWNLOAD CLIP
+  </button>
+</div>
+
+<!-- AFFILIATE BANNER -->
+<div class="affiliate">
+  <div class="aff-eyebrow">// LEVEL UP YOUR EDITING //</div>
+  <div class="aff-title">CapCut Pro</div>
+  <div class="aff-sub">Need AI editing, auto-captions, background removal & premium effects? This free tool cuts — CapCut Pro does everything else.</div>
+  <div class="aff-feats">
+    <div class="aff-feat">AI Auto-Edit</div>
+    <div class="aff-feat">Auto Captions</div>
+    <div class="aff-feat">BG Removal</div>
+    <div class="aff-feat">4K Export</div>
+    <div class="aff-feat">500+ Templates</div>
+    <div class="aff-feat">Text to Video</div>
+  </div>
+  <a href="YOUR_CAPCUT_AFFILIATE_LINK" target="_blank" rel="noopener" class="btn-aff">
+    TRY CAPCUT PRO FREE →
+  </a>
+  <div class="aff-note">* affiliate link — supports this free tool at no cost to you</div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <span>LOXS CLIPPER</span> // CHAOS CODE // SHAMR0CK3<br>
+  <span style="opacity:0.4; margin-top:4px; display:block">Video processed locally in your browser via FFmpeg.wasm</span>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────
+let ffmpeg = null;
+let videoFile = null;
+let videoDuration = 0;
+let outputBlob = null;
+
+// ─── INIT FFMPEG ─────────────────────────────────────────
+async function initFFmpeg() {
+  try {
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    ffmpeg = createFFmpeg({
+      log: false,
+      corePath: 'https://cdnjs.cloudflare.com/ajax/libs/ffmpeg/0.12.6/ffmpeg-core.js'
+    });
+    await ffmpeg.load();
+    window._fetchFile = fetchFile;
+
+    // Hide overlay
+    setTimeout(() => {
+      const overlay = document.getElementById('initOverlay');
+      overlay.style.transition = 'opacity 0.5s';
+      overlay.style.opacity = '0';
+      setTimeout(() => overlay.style.display = 'none', 500);
+    }, 2800);
+
+  } catch(e) {
+    document.querySelector('.init-text').textContent = 'ERROR: ' + e.message;
+    document.querySelector('.init-text').style.color = '#ff4466';
+  }
+}
+
+initFFmpeg();
+
+// ─── FILE SELECT ──────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('over');
+  handleFile(e.dataTransfer.files[0]);
+});
+document.getElementById('fileInput').addEventListener('change', e => handleFile(e.target.files[0]));
+
+function handleFile(file) {
+  if (!file || !file.type.startsWith('video/')) {
+    setStatus('fileStatus', '✗ Please select a valid video file', 'error');
+    return;
+  }
+
+  videoFile = file;
+  const url = URL.createObjectURL(file);
+  const vid = document.getElementById('videoPreview');
+  vid.src = url;
+
+  vid.onloadedmetadata = () => {
+    videoDuration = vid.duration;
+
+    document.getElementById('metaDur').textContent  = secToHMS(videoDuration);
+    document.getElementById('metaRes').textContent  = vid.videoWidth + 'x' + vid.videoHeight;
+    document.getElementById('metaSize').textContent = (file.size / 1048576).toFixed(1) + ' MB';
+    document.getElementById('metaType').textContent = file.type.split('/')[1].toUpperCase();
+
+    // Default times
+    document.getElementById('startTime').value = '00:00:00';
+    document.getElementById('endTime').value   = secToHMS(videoDuration);
+
+    // Show preview & slider
+    document.getElementById('previewWrap').style.display = 'block';
+    document.getElementById('rangeWrap').style.display   = 'block';
+
+    // Init slider
+    document.getElementById('sliderStart').value = 0;
+    document.getElementById('sliderEnd').value   = 100;
+    updateRangeFill();
+
+    document.getElementById('clipBtn').disabled = false;
+    document.getElementById('downloadBtn').style.display = 'none';
+    outputBlob = null;
+    setStatus('fileStatus', '✓ Loaded — ' + file.name, 'success');
+  };
+}
+
+// ─── DUAL RANGE SLIDER ────────────────────────────────────
+const sliderStart = document.getElementById('sliderStart');
+const sliderEnd   = document.getElementById('sliderEnd');
+
+sliderStart.addEventListener('input', () => {
+  if (+sliderStart.value >= +sliderEnd.value) sliderStart.value = +sliderEnd.value - 0.5;
+  const s = (+sliderStart.value / 100) * videoDuration;
+  document.getElementById('startTime').value = secToHMS(s);
+  updateRangeFill();
+});
+
+sliderEnd.addEventListener('input', () => {
+  if (+sliderEnd.value <= +sliderStart.value) sliderEnd.value = +sliderStart.value + 0.5;
+  const e = (+sliderEnd.value / 100) * videoDuration;
+  document.getElementById('endTime').value = secToHMS(e);
+  updateRangeFill();
+});
+
+function updateRangeFill() {
+  const s = +sliderStart.value;
+  const e = +sliderEnd.value;
+  document.getElementById('rangeFill').style.left  = s + '%';
+  document.getElementById('rangeFill').style.width = (e - s) + '%';
+  document.getElementById('rangeDisplay').textContent =
+    secToHMS((s/100)*videoDuration) + ' → ' + secToHMS((e/100)*videoDuration);
+}
+
+// ─── TIME INPUT AUTO-FORMAT ───────────────────────────────
+['startTime','endTime'].forEach(id => {
+  document.getElementById(id).addEventListener('input', function() {
+    let v = this.value.replace(/\D/g,'');
+    if (v.length > 2) v = v.slice(0,2) + ':' + v.slice(2);
+    if (v.length > 5) v = v.slice(0,5) + ':' + v.slice(5);
+    this.value = v.slice(0,8);
+    // Sync slider if duration known
+    if (videoDuration && id === 'startTime' && v.length === 8) {
+      sliderStart.value = (hmsToSec(v) / videoDuration) * 100;
+      updateRangeFill();
+    }
+    if (videoDuration && id === 'endTime' && v.length === 8) {
+      sliderEnd.value = (hmsToSec(v) / videoDuration) * 100;
+      updateRangeFill();
+    }
+  });
+});
+
+// ─── CLIP ─────────────────────────────────────────────────
+async function startClip() {
+  if (!ffmpeg || !videoFile) return;
+
+  const start = document.getElementById('startTime').value || '00:00:00';
+  const end   = document.getElementById('endTime').value;
+
+  if (!end || end === '00:00:00') {
+    setStatus('clipStatus', '✗ Set a valid end time', 'error');
+    return;
+  }
+
+  const s = hmsToSec(start);
+  const e = hmsToSec(end);
+
+  if (s >= e) {
+    setStatus('clipStatus', '✗ Start time must be before end time', 'error');
+    return;
+  }
+
+  if (e > videoDuration) {
+    setStatus('clipStatus', '✗ End time exceeds video duration (' + secToHMS(videoDuration) + ')', 'error');
+    return;
+  }
+
+  // UI: processing
+  document.getElementById('clipBtn').disabled = true;
+  document.getElementById('downloadBtn').style.display = 'none';
+  document.getElementById('clipProgress').style.display = 'block';
+  setStatus('clipStatus', '⬡ Processing... please wait', 'info');
+  outputBlob = null;
+
+  try {
+    const ext = videoFile.name.split('.').pop().toLowerCase() || 'mp4';
+    const inName  = 'input.' + ext;
+    const outName = 'output.mp4';
+
+    // Write file to FFmpeg virtual FS
+    ffmpeg.FS('writeFile', inName, await window._fetchFile(videoFile));
+
+    // Run FFmpeg
+    await ffmpeg.run(
+      '-i', inName,
+      '-ss', start,
+      '-to', end,
+      '-c', 'copy',
+      '-avoid_negative_ts', 'make_zero',
+      outName
+    );
+
+    // Read output
+    const data = ffmpeg.FS('readFile', outName);
+    outputBlob = new Blob([data.buffer], { type: 'video/mp4' });
+
+    // Cleanup FS
+    try { ffmpeg.FS('unlink', inName);  } catch(e) {}
+    try { ffmpeg.FS('unlink', outName); } catch(e) {}
+
+    // UI: done
+    document.getElementById('clipProgress').style.display = 'none';
+    const clipLen = (e - s).toFixed(1);
+    const clipMB  = (outputBlob.size / 1048576).toFixed(2);
+    setStatus('clipStatus', `✓ Done — ${clipLen}s clip · ${clipMB} MB ready`, 'success');
+    document.getElementById('downloadBtn').style.display = 'block';
+
+  } catch(err) {
+    document.getElementById('clipProgress').style.display = 'none';
+    setStatus('clipStatus', '✗ FFmpeg error: ' + err.message, 'error');
+  }
+
+  document.getElementById('clipBtn').disabled = false;
+}
+
+// ─── DOWNLOAD ─────────────────────────────────────────────
+function downloadClip() {
+  if (!outputBlob) return;
+  const url = URL.createObjectURL(outputBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  a.download = 'loxs_clip_' + ts + '.mp4';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── HELPERS ─────────────────────────────────────────────
+function secToHMS(s) {
+  s = Math.floor(s);
+  const h = Math.floor(s/3600);
+  const m = Math.floor((s%3600)/60);
+  const sec = s%60;
+  return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+}
+
+function hmsToSec(hms) {
+  const p = hms.split(':').map(Number);
+  return p[0]*3600 + p[1]*60 + (p[2]||0);
+}
+
+function pad(n) { return String(n).padStart(2,'0'); }
+
+function setStatus(id, msg, type) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = 'status show ' + type;
+}
+</script>
+</body>
+</html>
