@@ -7,7 +7,7 @@
 <meta name="description" content="Free online video cutter tool. Trim and clip your videos instantly in browser — no upload, no server, 100% private.">
 
 <!-- FFmpeg.wasm -->
-<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.9.8/dist/ffmpeg.min.js"></script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
@@ -684,7 +684,7 @@ async function initFFmpeg() {
     const { createFFmpeg, fetchFile } = FFmpeg;
     ffmpeg = createFFmpeg({
       log: false,
-      corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
+      corePath: 'https://unpkg.com/@ffmpeg/core@0.9.8/dist/ffmpeg-core.js'
     });
     await ffmpeg.load();
     window._fetchFile = fetchFile;
